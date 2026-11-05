@@ -1,35 +1,42 @@
-# Pakistani Phone OTP Verification
+# Pakistani OTP Demo (Expo Go)
 
-An Expo React Native app that verifies Pakistani mobile numbers with Firebase Phone Authentication. Firebase native modules require a local native development build; this app does not run in Expo Go and does not use EAS cloud builds.
+This Expo app demonstrates a Pakistani-only, six-digit OTP flow using Firebase Firestore. The OTP is generated locally by the app and delivered in a local phone notification; **no SMS is sent**.
+
+> **Demo only:** This does not verify ownership of a phone number and is not suitable for authentication or production use. The OTP is created on the client and printed to the development terminal. Firestore test mode permits broad database access; never use these settings or this flow for sensitive data.
 
 ## Firebase setup
 
 1. Create a Firebase project on the free Spark plan at [Firebase Console](https://console.firebase.google.com/).
-2. Add an Android app with package name `com.yourname.otpquiz`.
-3. Download its `google-services.json` and place it in this project root. The file is intentionally ignored by Git.
-4. In Firebase Console, open **Authentication > Sign-in method > Phone** and enable Phone authentication.
-5. Add your development certificate fingerprints under **Project settings > Your apps > Android app > SHA certificate fingerprints**. See the [Firebase Android setup instructions](https://firebase.google.com/docs/android/setup#prerequisites) for obtaining SHA-1 and SHA-256:
-   - For the local debug build, run `cd android` then `.\gradlew signingReport` after prebuild, and copy the debug SHA-1 and SHA-256 fingerprints into Firebase.
-   - For a release key, use `keytool -list -v -keystore <keystore-path> -alias <key-alias>` and register those fingerprints too.
-   - After adding fingerprints, download the updated `google-services.json` and replace the root copy.
-6. To test without real SMS charges or delivery, open **Authentication > Sign-in method > Phone > Phone numbers for testing**, add a Pakistani test number and a fixed 6-digit code. Use that number and code in the app. Firebase test numbers do not send SMS.
+2. Create a Cloud Firestore database and choose **Start in test mode** for this demo.
+3. Add a **web app** in the project settings. Copy the Firebase web config values.
+4. Copy `.env.example` to `.env` and fill in the values from the web app config:
+   - `EXPO_PUBLIC_FIREBASE_API_KEY`
+   - `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
+   - `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
+   - `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`
+   - `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+   - `EXPO_PUBLIC_FIREBASE_APP_ID`
 
-## Install and run on Android
+`.env` is ignored by Git. Expo's `EXPO_PUBLIC_` values are included in the client app bundle; do not put private credentials in them.
 
-Install Node.js and the Android development prerequisites (Android Studio/SDK and Java), then run:
+## Run in Expo Go
+
+Install Node.js, then run:
 
 ```sh
 npm install
-npx expo prebuild
-npx expo run:android
+npx expo start
 ```
 
-`google-services.json` must be in the project root before running prebuild. The native Firebase packages need a development build, so do not open the project in Expo Go. No EAS cloud build or paid service is required.
+Scan the QR code with Expo Go on your phone. No native prebuild, Android/iOS project, EAS build, paid service, or remote push notification is required. Allow notifications when prompted so the app can show a local notification; if permission is denied or notifications are unavailable, the OTP appears in an in-app banner instead.
 
-## Phone number input
+## OTP flow
 
-The app only accepts Pakistani mobile numbers. It accepts `03001234567`, `3001234567`, `923001234567`, and `+923001234567`, strips spaces and dashes, and normalizes to `+923XXXXXXXXX`. The visible `+92` prefix is a fixed label; users can type the local number after it.
+- The app accepts Pakistani mobile number formats `03001234567`, `3001234567`, `923001234567`, and `+923001234567`. It strips spaces and dashes and normalizes to `+923XXXXXXXXX`.
+- A fresh random six-digit OTP is generated using Expo Crypto for each request. A SHA-256 hash salted with the normalized phone number, a 60-second expiration, and an attempt count are saved to the `otpRequests` Firestore collection. A successful verification deletes the document; three incorrect attempts require a new OTP.
+- The SMS is **simulated with a local notification** titled “SMS: Verification Code”; it is not delivered over SMS or remote push.
+- Find the OTP in the Metro/Expo terminal (`[OTP] Phone: ... | OTP: ...`) or in the phone notification. Avoid recording real personal numbers when sharing a screen recording.
 
-## Logs
+## Firestore warning
 
-OTP flow diagnostics are written with `[OTP]` prefixes. With `npx expo run:android`, watch the terminal output; you can also inspect native device output with `adb logcat`. OTP digits are not written to logs.
+Test mode is for temporary development only and may allow anyone with the project configuration to read or change database contents. Configure restrictive Firestore Security Rules before exposing any real data, and do not treat this client-generated OTP flow as phone authentication.

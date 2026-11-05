@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 
-export default function SuccessScreen({ phoneNumber, onSignOut, loading }) {
+export default function SuccessScreen({ phoneNumber, onStartOver, loading }) {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
@@ -23,7 +23,7 @@ export default function SuccessScreen({ phoneNumber, onSignOut, loading }) {
         <Pressable
           accessibilityRole="button"
           disabled={loading}
-          onPress={onSignOut}
+          onPress={onStartOver}
           style={({ pressed }) => [
             styles.button,
             pressed && !loading && styles.buttonPressed,
@@ -32,7 +32,7 @@ export default function SuccessScreen({ phoneNumber, onSignOut, loading }) {
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.buttonText}>Sign Out</Text>
+            <Text style={styles.buttonText}>Start Over</Text>
           )}
         </Pressable>
       </View>

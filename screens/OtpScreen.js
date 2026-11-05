@@ -9,11 +9,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { getFriendlyAuthError } from "../services/authService";
+import { getOtpErrorMessage } from "../services/otpService";
 
 export default function OtpScreen({
   phoneNumber,
-  confirmation,
   onVerify,
   onResend,
   onBack,
@@ -41,9 +40,9 @@ export default function OtpScreen({
 
     setErrorMessage("");
     try {
-      await onVerify(confirmation, code);
+      await onVerify(code);
     } catch (error) {
-      setErrorMessage(getFriendlyAuthError(error));
+      setErrorMessage(getOtpErrorMessage(error));
     }
   }
 
@@ -53,12 +52,12 @@ export default function OtpScreen({
     }
 
     setErrorMessage("");
-    setCode("");
     try {
       await onResend();
+      setCode("");
       setSecondsRemaining(60);
     } catch (error) {
-      setErrorMessage(getFriendlyAuthError(error));
+      setErrorMessage(getOtpErrorMessage(error));
     }
   }
 

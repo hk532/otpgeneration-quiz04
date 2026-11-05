@@ -4,14 +4,6 @@
     "slug": "otp-quiz04",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "android": {
-      "package": "com.yourname.otpquiz",
-      "googleServicesFile": "./google-services.json"
-    },
-    "plugins": [
-      "@react-native-firebase/app",
-      "@react-native-firebase/auth"
-    ]
+    "userInterfaceStyle": "light"
   }
 }
