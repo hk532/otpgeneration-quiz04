@@ -1,18 +1,12 @@
 import * as Crypto from "expo-crypto";
 import * as Notifications from "expo-notifications";
-import {
-  deleteDoc,
-  doc,
-  runTransaction,
-  setDoc,
-} from "firebase/firestore";
 import { Platform } from "react-native";
-import { db } from "./firebase";
 
 const OTP_LIFETIME_MS = 60_000;
 const MAX_ATTEMPTS = 3;
-const OTP_COLLECTION = "otpRequests";
 const RANDOM_VALUE_LIMIT = 4_294_000_000;
+let activeOtpRequest = null;
+let activePhoneNumber = null;
 
 export async function generateOtp() {
   while (true) {
@@ -26,14 +20,6 @@ export async function generateOtp() {
       return String(randomValue % 1_000_000).padStart(6, "0");
     }
   }
-}
-
-async function hashOtp(phoneNumber, otp) {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    `${phoneNumber}:${otp}`,
-    { encoding: Crypto.CryptoEncoding.HEX },
-  );
 }
 
 async function notifyOtp(otp) {
@@ -76,113 +62,69 @@ async function notifyOtp(otp) {
 }
 
 export async function sendOtp(phoneNumber) {
-  let otp;
-  let expiresAt;
-  let otpHash;
+  console.log(`[OTP] Generating a new code for ${phoneNumber}`);
   try {
-    otp = await generateOtp();
-    expiresAt = Date.now() + OTP_LIFETIME_MS;
-    otpHash = await hashOtp(phoneNumber, otp);
+    const otp = await generateOtp();
+    const expiresAt = Date.now() + OTP_LIFETIME_MS;
+    activeOtpRequest = { otp, expiresAt, attempts: 0 };
+    activePhoneNumber = phoneNumber;
+
+    console.log(`[OTP] Phone: ${phoneNumber} | OTP: ${otp}`);
+    const notification = await notifyOtp(otp);
+
+    return {
+      expiresAt,
+      notificationMessage: notification.message,
+      notificationShown: notification.shown,
+    };
   } catch (error) {
     console.log(`[OTP] Generation failed: ${error?.message || "unknown error"}`);
     throw error;
   }
-  const requestRef = doc(db, OTP_COLLECTION, phoneNumber);
-
-  console.log(`[OTP] Phone: ${phoneNumber} | OTP: ${otp}`);
-
-  try {
-    await setDoc(requestRef, {
-      otpHash,
-      expiresAt: new Date(expiresAt),
-      attempts: 0,
-    });
-  } catch (error) {
-    console.log(`[OTP] Firestore save failed: ${error?.code || error?.message}`);
-    throw error;
-  }
-
-  console.log(`[OTP] Firestore request saved for ${phoneNumber}`);
-  const notification = await notifyOtp(otp);
-
-  return {
-    expiresAt,
-    notificationMessage: notification.message,
-    notificationShown: notification.shown,
-  };
-}
-
-function getExpiryTime(value) {
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-  if (value && typeof value.toMillis === "function") {
-    return value.toMillis();
-  }
-  return Number.NaN;
 }
 
 export async function verifyOtp(phoneNumber, enteredOtp) {
   console.log(`[OTP] Verification started for ${phoneNumber}`);
-  const requestRef = doc(db, OTP_COLLECTION, phoneNumber);
-  let result;
-  try {
-    const enteredHash = await hashOtp(phoneNumber, enteredOtp);
-    result = await runTransaction(db, async (transaction) => {
-      const request = await transaction.get(requestRef);
-
-      if (!request.exists()) {
-        return "missing";
-      }
-
-      const data = request.data();
-      const expiresAt = getExpiryTime(data.expiresAt);
-      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-        transaction.delete(requestRef);
-        return "expired";
-      }
-
-      const attempts =
-        Number.isSafeInteger(data.attempts) && data.attempts >= 0
-          ? data.attempts
-          : MAX_ATTEMPTS;
-      if (attempts >= MAX_ATTEMPTS) {
-        return "max-attempts";
-      }
-
-      if (data.otpHash === enteredHash) {
-        transaction.delete(requestRef);
-        return "verified";
-      }
-
-      const nextAttempts = attempts + 1;
-      transaction.update(requestRef, { attempts: nextAttempts });
-      return nextAttempts >= MAX_ATTEMPTS ? "max-attempts" : "invalid";
-    });
-  } catch (error) {
-    console.log(
-      `[OTP] Verification error: ${error?.code || error?.message || "unknown error"}`,
-    );
-    throw error;
+  if (!activeOtpRequest || activePhoneNumber !== phoneNumber) {
+    console.log(`[OTP] Verification failed for ${phoneNumber}: missing`);
+    throw new Error("missing");
   }
 
-  if (result === "verified") {
-    console.log(`[OTP] Verification succeeded for ${phoneNumber}`);
-    return;
+  if (activeOtpRequest.expiresAt <= Date.now()) {
+    activeOtpRequest = null;
+    activePhoneNumber = null;
+    console.log(`[OTP] Verification failed for ${phoneNumber}: expired`);
+    throw new Error("expired");
   }
 
-  console.log(`[OTP] Verification failed for ${phoneNumber}: ${result}`);
-  const error = new Error(result);
-  error.code = result;
-  throw error;
+  if (activeOtpRequest.attempts >= MAX_ATTEMPTS) {
+    console.log(`[OTP] Verification failed for ${phoneNumber}: max-attempts`);
+    throw new Error("max-attempts");
+  }
+
+  if (activeOtpRequest.otp !== enteredOtp) {
+    activeOtpRequest.attempts += 1;
+    const result =
+      activeOtpRequest.attempts >= MAX_ATTEMPTS ? "max-attempts" : "invalid";
+    console.log(`[OTP] Verification failed for ${phoneNumber}: ${result}`);
+    throw new Error(result);
+  }
+
+  activeOtpRequest = null;
+  activePhoneNumber = null;
+  console.log(`[OTP] Verification succeeded for ${phoneNumber}`);
 }
 
-export async function clearOtp(phoneNumber) {
-  await deleteDoc(doc(db, OTP_COLLECTION, phoneNumber));
+export function clearOtp(phoneNumber) {
+  if (activePhoneNumber === phoneNumber) {
+    activeOtpRequest = null;
+    activePhoneNumber = null;
+    console.log(`[OTP] In-memory code cleared for ${phoneNumber}`);
+  }
 }
 
 export function getOtpErrorMessage(error) {
-  switch (error?.code) {
+  switch (error?.message) {
     case "expired":
     case "missing":
       return "OTP expired. Request a new code.";
@@ -191,6 +133,6 @@ export function getOtpErrorMessage(error) {
     case "invalid":
       return "Invalid OTP. Check the code and try again.";
     default:
-      return "Could not complete the request. Check your connection and try again.";
+      return "Could not complete the request. Please try again.";
   }
 }

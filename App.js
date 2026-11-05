@@ -41,8 +41,8 @@ export default function App() {
     } catch (error) {
       console.log(`[OTP] Request failed: ${error?.code || error?.message}`);
       Alert.alert(
-        "Could not save OTP",
-        "Check your Firebase configuration and Firestore connection, then try again.",
+        "Could not generate OTP",
+        "Please try again.",
       );
     } finally {
       setLoading(false);
@@ -73,7 +73,7 @@ export default function App() {
       setScreen("phone");
     } catch (error) {
       console.log(`[OTP] Cleanup failed: ${error?.code || error?.message}`);
-      Alert.alert("Could not clear the OTP request", "Please try again.");
+      Alert.alert("Could not start over", "Please try again.");
     } finally {
       setLoading(false);
     }
